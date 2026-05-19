@@ -1,0 +1,186 @@
+{
+  "info": {
+    "name": "Smart Complaint Management System API",
+    "description": "Complete Postman collection for AI-Based Smart Complaint Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "BASE_URL", "value": "http://localhost:5000/api" },
+    { "key": "TOKEN", "value": "" },
+    { "key": "COMPLAINT_ID", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/auth/signup",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"email\": \"rahul@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const res = pm.response.json();", "if (res.token) pm.collectionVariables.set('TOKEN', res.token);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rahul@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/auth/profile",
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Complaints",
+      "item": [
+        {
+          "name": "Create Complaint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const res = pm.response.json();", "if (res.complaint) pm.collectionVariables.set('COMPLAINT_ID', res.complaint._id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/complaints",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"email\": \"rahul@example.com\",\n  \"title\": \"Water pipe burst on main road\",\n  \"description\": \"There is a major water pipe burst near Sector 5 main road. Water is flowing on the road causing traffic issues. This is very urgent and needs immediate attention.\",\n  \"category\": \"Water\",\n  \"location\": \"Ghaziabad\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get All Complaints",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/complaints",
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Get Complaint By ID",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/complaints/{{COMPLAINT_ID}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Update Complaint Status",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/complaints/{{COMPLAINT_ID}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"In Progress\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Search by Location",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/complaints/search?location=Ghaziabad",
+              "query": [{ "key": "location", "value": "Ghaziabad" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Filter by Category",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/complaints?category=Water&status=Pending",
+              "query": [
+                { "key": "category", "value": "Water" },
+                { "key": "status", "value": "Pending" }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Delete Complaint",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/complaints/{{COMPLAINT_ID}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI",
+      "item": [
+        {
+          "name": "AI Analyze Complaint",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/ai/analyze",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"complaintId\": \"{{COMPLAINT_ID}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Quick Analyze (No Save)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/ai/quick-analyze",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{TOKEN}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Electricity outage for 3 days\",\n  \"description\": \"Our entire colony has no electricity for 3 days. This is an emergency as elderly people and patients are suffering.\",\n  \"category\": \"Electricity\",\n  \"location\": \"Noida Sector 15\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
