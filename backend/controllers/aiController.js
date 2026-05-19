@@ -5,6 +5,7 @@ const OpenAI = require("openai");
 const Complaint = require("../models/Complaint");
 
 // OpenRouter Configuration
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
