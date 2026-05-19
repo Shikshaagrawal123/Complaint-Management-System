@@ -1,10 +1,19 @@
-// controllers/aiController.js - OpenAI-powered complaint analysis
-const OpenAI = require('openai');
-const Complaint = require('../models/Complaint');
+// controllers/aiController.js
+// OpenRouter-powered complaint analysis
 
-// @desc    Analyze complaint using OpenAI
+const OpenAI = require("openai");
+const Complaint = require("../models/Complaint");
+
+// OpenRouter Configuration
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+});
+
+// @desc    Analyze complaint using AI
 // @route   POST /api/ai/analyze
 // @access  Private
+
 const analyzeComplaint = async (req, res, next) => {
   try {
     const { complaintId } = req.body;
@@ -12,68 +21,89 @@ const analyzeComplaint = async (req, res, next) => {
     if (!complaintId) {
       return res.status(400).json({
         success: false,
-        message: 'complaintId is required.',
+        message: "complaintId is required.",
       });
     }
 
+    // Find complaint
     const complaint = await Complaint.findById(complaintId);
+
     if (!complaint) {
-      return res.status(404).json({ success: false, message: 'Complaint not found.' });
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found.",
+      });
     }
 
     // Verify ownership or admin
     if (
       complaint.user.toString() !== req.user._id.toString() &&
-      req.user.role !== 'admin'
+      req.user.role !== "admin"
     ) {
-      return res.status(403).json({ success: false, message: 'Access denied.' });
+      return res.status(403).json({
+        success: false,
+        message: "Access denied.",
+      });
     }
 
-    // If already analyzed within last 24h, return cached
+    // Return cached analysis if already analyzed in last 24h
     if (
-      complaint.aiAnalysis.analyzedAt &&
-      Date.now() - new Date(complaint.aiAnalysis.analyzedAt).getTime() < 86400000
+      complaint.aiAnalysis?.analyzedAt &&
+      Date.now() -
+        new Date(complaint.aiAnalysis.analyzedAt).getTime() <
+        86400000
     ) {
       return res.status(200).json({
         success: true,
-        message: 'Returning cached AI analysis.',
+        message: "Returning cached AI analysis.",
         analysis: complaint.aiAnalysis,
         complaint,
       });
     }
 
-    // Call OpenAI API
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // AI Prompt
+    const prompt = `
+You are an AI assistant for a Smart Complaint Management System for Indian municipal services.
 
-    const prompt = `You are an AI assistant for a Smart Complaint Management System for Indian municipal services.
-
-Analyze the following complaint and provide a structured response in JSON format ONLY (no extra text):
+Analyze the complaint and return ONLY valid JSON.
 
 Complaint Details:
-- Title: ${complaint.title}
-- Category: ${complaint.category}
-- Description: ${complaint.description}
-- Location: ${complaint.location}
+Title: ${complaint.title}
+Category: ${complaint.category}
+Description: ${complaint.description}
+Location: ${complaint.location}
 
-Respond with this exact JSON structure:
+Return JSON in this format:
+
 {
   "priority": "High | Medium | Low",
-  "department": "Department name responsible (e.g., Water Department, Electricity Department, Sanitation Department, PWD, etc.)",
-  "summary": "A 1-2 sentence summary of the complaint",
-  "userResponse": "A professional, empathetic response to the citizen about their complaint (2-3 sentences)"
+  "department": "Department name",
+  "summary": "Short complaint summary",
+  "userResponse": "Professional citizen response"
 }
 
 Rules:
 - Water leakage, pipe burst → Water Department, High priority
-- Power outage, electricity issues → Electricity Department, High/Medium priority
-- Garbage, waste → Sanitation Department, Medium priority
-- Road damage, potholes → PWD (Public Works Department), Medium priority
-- Noise complaints → Municipal Corporation, Low priority
-- Base priority on urgency words: "urgent", "dangerous", "no water" = High`;
+- Power outage, electricity issues → Electricity Department
+- Garbage issues → Sanitation Department
+- Road damage → PWD Department
+- Noise complaints → Municipal Corporation
 
+Urgent words:
+urgent, dangerous, emergency, flooded, no water = High priority
+`;
+
+    // OpenRouter AI Request
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
+      model: "openai/gpt-3.5-turbo",
+
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+
       temperature: 0.3,
       max_tokens: 500,
     });
@@ -81,19 +111,28 @@ Rules:
     const rawText = response.choices[0].message.content.trim();
 
     let aiResult;
+
     try {
       aiResult = JSON.parse(rawText);
-    } catch {
-      // Fallback if JSON parse fails
+    } catch (err) {
+      // fallback if AI returns invalid JSON
       aiResult = generateFallbackAnalysis(complaint);
     }
 
-    // Save AI analysis to complaint
+    // Save AI analysis
     complaint.aiAnalysis = {
-      priority: aiResult.priority || 'Medium',
-      department: aiResult.department || 'Municipal Corporation',
-      summary: aiResult.summary || complaint.description.substring(0, 100),
-      userResponse: aiResult.userResponse || 'Your complaint has been received and will be addressed shortly.',
+      priority: aiResult.priority || "Medium",
+      department:
+        aiResult.department || "Municipal Corporation",
+
+      summary:
+        aiResult.summary ||
+        complaint.description.substring(0, 100),
+
+      userResponse:
+        aiResult.userResponse ||
+        "Your complaint has been received and forwarded to the concerned department.",
+
       analyzedAt: new Date(),
     };
 
@@ -101,51 +140,101 @@ Rules:
 
     res.status(200).json({
       success: true,
-      message: 'AI analysis completed successfully.',
+      message: "AI analysis completed successfully.",
       analysis: complaint.aiAnalysis,
       complaint,
     });
+
   } catch (error) {
-    // If OpenAI fails, use fallback
-    if (error.code === 'insufficient_quota' || error.status === 429) {
+    console.error("AI ANALYSIS ERROR:", error);
+
+    // OpenRouter/OpenAI quota error
+    if (
+      error.code === "insufficient_quota" ||
+      error.status === 429
+    ) {
       return res.status(503).json({
         success: false,
-        message: 'OpenAI quota exceeded. Please check your API key billing.',
+        message:
+          "AI quota exceeded. Please check API billing.",
       });
     }
-    next(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Fallback analysis without OpenAI (rule-based)
+// Fallback analysis if AI fails
 const generateFallbackAnalysis = (complaint) => {
   const categoryMap = {
-    Water: { department: 'Water Department', priority: 'High' },
-    Electricity: { department: 'Electricity Department', priority: 'High' },
-    Garbage: { department: 'Sanitation Department', priority: 'Medium' },
-    Roads: { department: 'PWD (Public Works Department)', priority: 'Medium' },
-    Sanitation: { department: 'Sanitation Department', priority: 'Medium' },
-    Noise: { department: 'Municipal Corporation', priority: 'Low' },
-    Other: { department: 'Municipal Corporation', priority: 'Medium' },
+    Water: {
+      department: "Water Department",
+      priority: "High",
+    },
+
+    Electricity: {
+      department: "Electricity Department",
+      priority: "High",
+    },
+
+    Garbage: {
+      department: "Sanitation Department",
+      priority: "Medium",
+    },
+
+    Roads: {
+      department: "PWD Department",
+      priority: "Medium",
+    },
+
+    Sanitation: {
+      department: "Sanitation Department",
+      priority: "Medium",
+    },
+
+    Noise: {
+      department: "Municipal Corporation",
+      priority: "Low",
+    },
+
+    Other: {
+      department: "Municipal Corporation",
+      priority: "Medium",
+    },
   };
 
-  const mapped = categoryMap[complaint.category] || categoryMap['Other'];
+  const mapped =
+    categoryMap[complaint.category] ||
+    categoryMap["Other"];
+
   const descLower = complaint.description.toLowerCase();
-  const isUrgent = ['urgent', 'emergency', 'dangerous', 'no water', 'flooded'].some(
-    (word) => descLower.includes(word)
-  );
+
+  const isUrgent = [
+    "urgent",
+    "dangerous",
+    "emergency",
+    "flooded",
+    "no water",
+  ].some((word) => descLower.includes(word));
 
   return {
-    priority: isUrgent ? 'High' : mapped.priority,
+    priority: isUrgent ? "High" : mapped.priority,
+
     department: mapped.department,
-    summary: `Complaint regarding ${complaint.category.toLowerCase()} issue in ${complaint.location}. Requires attention from the ${mapped.department}.`,
-    userResponse: `Dear ${complaint.name}, your complaint about "${complaint.title}" in ${complaint.location} has been received. It has been forwarded to the ${mapped.department} and will be addressed within 3-5 working days. Thank you for bringing this to our attention.`,
+
+    summary: `Complaint regarding ${complaint.category} issue in ${complaint.location}.`,
+
+    userResponse: `Dear ${complaint.name}, your complaint "${complaint.title}" has been received and forwarded to the ${mapped.department}.`,
   };
 };
 
-// @desc    Analyze without saving (quick analyze)
+// @desc    Quick AI Analyze
 // @route   POST /api/ai/quick-analyze
 // @access  Private
+
 const quickAnalyze = async (req, res, next) => {
   try {
     const { title, description, category, location } = req.body;
@@ -153,21 +242,32 @@ const quickAnalyze = async (req, res, next) => {
     if (!description || !category) {
       return res.status(400).json({
         success: false,
-        message: 'description and category are required.',
+        message: "description and category are required.",
       });
     }
 
-    const fakeComplaint = { title, description, category, location, name: 'User' };
+    const fakeComplaint = {
+      title,
+      description,
+      category,
+      location,
+      name: "User",
+    };
+
     const result = generateFallbackAnalysis(fakeComplaint);
 
     res.status(200).json({
       success: true,
-      message: 'Quick analysis complete.',
+      message: "Quick analysis complete.",
       analysis: result,
     });
+
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { analyzeComplaint, quickAnalyze };
+module.exports = {
+  analyzeComplaint,
+  quickAnalyze,
+};
